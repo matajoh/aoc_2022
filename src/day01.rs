@@ -1,16 +1,4 @@
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
-
-// The output is wrapped in a Result to allow matching on errors
-// Returns an Iterator to the Reader of the lines of the file.
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
-}
+use super::utils::read_lines;
 
 pub fn run() {
     let mut calories: Vec<i32> = vec![];
@@ -34,6 +22,7 @@ pub fn run() {
     calories.sort_by(|a, b| b.cmp(a));
 
     let max_values = &calories[0..3];
+    println!("== Day 01 ==");
     println!("Part 1: {}", max_values[0]);
     println!("Part 2: {}", max_values[0] + max_values[1] + max_values[2]);
 }
