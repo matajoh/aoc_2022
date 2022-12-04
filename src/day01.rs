@@ -1,24 +1,27 @@
-use super::utils::read_lines;
+use super::utils::read_to_vec;
+
+fn to_item(line: &str) -> Option<i32> {
+    match line.trim() {
+        "" => None,
+        val => Some(val.parse().unwrap()),
+    }
+}
 
 pub fn run() {
-    let mut calories: Vec<i32> = vec![];
+    let items = read_to_vec("./data/day01.txt", to_item);
 
-    if let Ok(lines) = read_lines("./data/day01.txt") {
-        let mut sum = 0i32;
-        for line in lines {
-            if let Ok(ip) = line {
-                if ip.trim().is_empty() {
-                    calories.push(sum);
-                    sum = 0;
-                } else {
-                    let count: i32 = ip.trim().parse().unwrap();
-                    sum += count;
-                }
+    let mut calories: Vec<i32> = vec![];
+    let mut sum = 0i32;
+    for item in items {
+        match item {
+            Some(value) => sum += value,
+            None => {
+                calories.push(sum);
+                sum = 0
             }
         }
-        calories.push(sum);
     }
-
+    calories.push(sum);
     calories.sort_by(|a, b| b.cmp(a));
 
     let max_values = &calories[0..3];

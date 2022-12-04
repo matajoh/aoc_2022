@@ -1,4 +1,4 @@
-use super::utils::read_and_convert;
+use super::utils::read_to_vec;
 use std::collections::HashSet;
 
 fn to_priority(item: char) -> i32 {
@@ -6,25 +6,25 @@ fn to_priority(item: char) -> i32 {
     const UPPER: i32 = 'A' as i32;
     let priority: i32 = item as i32;
     if item.is_lowercase() {
-        return priority - LOWER + 1;
+        priority - LOWER + 1
+    } else {
+        priority - UPPER + 27
     }
-
-    return priority - UPPER + 27;
 }
 
 fn to_item_set(rucksack: &str) -> HashSet<char> {
-    return rucksack.chars().into_iter().collect();
+    rucksack.chars().into_iter().collect()
 }
 
 fn common_items(lhs: String, rhs: &str) -> String {
-    return match (lhs.as_str(), rhs) {
+    match (lhs.as_str(), rhs) {
         ("", value) => value.to_string(),
         (a, b) => {
             let first = to_item_set(a);
             let second = to_item_set(b);
-            return first.intersection(&second).collect();
+            first.intersection(&second).collect()
         }
-    };
+    }
 }
 
 fn common_item(rucksacks: &[String]) -> char {
@@ -32,35 +32,35 @@ fn common_item(rucksacks: &[String]) -> char {
         .iter()
         .fold("".to_string(), |acc, r| common_items(acc, r));
     assert!(common.len() == 1);
-    return common.chars().next().unwrap();
+    common.chars().next().unwrap()
 }
 
 fn compartments(rucksack: &String) -> (String, String) {
     let length = rucksack.len();
     let first = rucksack[0..length / 2].to_string();
     let second = rucksack[length / 2..length].to_string();
-    return (first, second);
+    (first, second)
 }
 
 fn part1(rucksacks: &Vec<String>) -> i32 {
-    return rucksacks
+    rucksacks
         .iter()
         .map(|r| compartments(r))
         .map(|(first, second)| common_item(&[first, second]))
         .map(|c| to_priority(c))
-        .sum();
+        .sum()
 }
 
 fn part2(rucksacks: &Vec<String>) -> i32 {
-    return rucksacks
+    rucksacks
         .chunks_exact(3)
         .map(|r| common_item(r))
         .map(|c| to_priority(c))
-        .sum();
+        .sum()
 }
 
 pub fn run() {
-    let rucksacks = read_and_convert("data/day03.txt", |s| Some(s.to_string()));
+    let rucksacks = read_to_vec("data/day03.txt", |s| s.to_string());
 
     println!("== Day 03 ==");
     println!("Part 1: {}", part1(&rucksacks));
