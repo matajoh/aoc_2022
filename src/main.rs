@@ -7,6 +7,7 @@ mod day06;
 mod day07;
 mod day08;
 mod day09;
+mod day10;
 mod utils;
 
 use std::env;
@@ -21,6 +22,7 @@ fn run_all() {
     day07::run();
     day08::run();
     day09::run();
+    day10::run();
 }
 
 fn main() {
@@ -36,6 +38,7 @@ fn main() {
             "7" => day07::run(),
             "8" => day08::run(),
             "9" => day09::run(),
+            "10" => day10::run(),
             "all" => run_all(),
             _ => println!("Unrecognized option: {}", args[1]),
         }
