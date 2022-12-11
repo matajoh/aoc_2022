@@ -131,5 +131,5 @@ pub fn run() {
     println!("Part 1: {}", part1(&mut program));
     program.reset();
     println!("Part 2");
-    print!("{}", part2(&mut program))
+    println!("{}", part2(&mut program))
 }
