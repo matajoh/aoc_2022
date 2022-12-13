@@ -10,11 +10,12 @@ mod day09;
 mod day10;
 mod day11;
 mod day12;
+mod day13;
 mod utils;
 
 use std::env;
 
-static DAYS: [fn(); 12] = [
+static DAYS: [fn(); 13] = [
     day01::run,
     day02::run,
     day03::run,
@@ -27,6 +28,7 @@ static DAYS: [fn(); 12] = [
     day10::run,
     day11::run,
     day12::run,
+    day13::run,
 ];
 
 fn run_all() {
