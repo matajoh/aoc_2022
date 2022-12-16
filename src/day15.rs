@@ -128,6 +128,11 @@ fn get_explore_range(sensors: &Vec<Sensor>) -> (i64, i64) {
             })
         })
         .collect::<Vec<i64>>();
+
+    // TODO
+    // there is an analytical solution here. Need to find the two lines and then
+    // intersect them.
+
     gaps.sort();
     (gaps[0], gaps[gaps.len() - 1])
 }

@@ -11,13 +11,29 @@ struct Valve {
 }
 
 #[derive(Clone, Eq, PartialEq)]
+struct Position {
+    steps: usize,
+    valve: usize,
+}
+
+#[derive(Clone, Eq, PartialEq)]
 struct State {
     unopened: HashSet<usize>,
     pressure_released: usize,
-    me_steps: usize,
-    me_valve: usize,
-    elephant_steps: usize,
-    elephant_valve: usize,
+    pos0: Position,
+    pos1: Position,
+}
+
+fn can_move_to(
+    unopened: &HashSet<usize>,
+    distances: &Vec<Vec<usize>>,
+    pos: &Position,
+) -> Vec<usize> {
+    unopened
+        .iter()
+        .filter(|i| distances[pos.valve][**i] < pos.steps)
+        .map(|i| *i)
+        .collect()
 }
 
 impl State {
@@ -34,10 +50,61 @@ impl State {
                 .iter()
                 .enumerate()
                 .map(|(i, f)| match 2 * i {
-                    s if s < self.me_steps => (self.me_steps - s) * f,
+                    s if s < self.pos0.steps => (self.pos0.steps - s) * f,
                     _ => 0,
                 })
                 .sum::<usize>()
+    }
+
+    fn update(
+        &self,
+        valves: &Vec<Valve>,
+        distances: &Vec<Vec<usize>>,
+        move0: Option<usize>,
+        move1: Option<usize>,
+    ) -> State {
+        let pos0 = match move0 {
+            Some(valve) => Position {
+                steps: self.pos0.steps - distances[self.pos0.valve][valve] - 1,
+                valve,
+            },
+            None => Position { steps: 0, valve: 0 },
+        };
+        let pos1 = match move1 {
+            Some(valve) => Position {
+                steps: self.pos1.steps - distances[self.pos1.valve][valve] - 1,
+                valve,
+            },
+            None => Position { steps: 0, valve: 0 },
+        };
+        State {
+            unopened: self
+                .unopened
+                .difference(&HashSet::from([pos0.valve, pos1.valve]))
+                .map(|v| *v)
+                .collect(),
+            pressure_released: self.pressure_released
+                + pos0.steps * valves[pos0.valve].flow_rate
+                + pos1.steps * valves[pos1.valve].flow_rate,
+            pos0,
+            pos1,
+        }
+    }
+
+    fn get_moves(&self, distances: &Vec<Vec<usize>>) -> (Vec<usize>, Vec<usize>) {
+        let mut moves0 = can_move_to(&self.unopened, distances, &self.pos0);
+        let mut moves1 = can_move_to(&self.unopened, distances, &self.pos1);
+        if moves0.len() == 1 && moves1.len() == 1 && moves0[0] == moves1[0] {
+            let dist0 = distances[self.pos0.valve][moves0[0]];
+            let dist1 = distances[self.pos1.valve][moves0[0]];
+            if dist0 < dist1 {
+                moves1.clear()
+            } else {
+                moves0.clear()
+            }
+        }
+
+        (moves0, moves1)
     }
 }
 
@@ -45,8 +112,8 @@ impl Ord for State {
     fn cmp(&self, other: &Self) -> Ordering {
         self.pressure_released
             .cmp(&other.pressure_released)
-            .then_with(|| self.me_steps.cmp(&other.me_steps))
-            .then_with(|| self.elephant_steps.cmp(&other.elephant_steps))
+            .then_with(|| self.pos0.steps.cmp(&other.pos0.steps))
+            .then_with(|| self.pos1.steps.cmp(&other.pos1.steps))
     }
 }
 
@@ -108,6 +175,7 @@ impl PartialOrd for PathState {
     }
 }
 
+// TODO this can be abstracted out into its own module
 fn min_path(valves: &Vec<Valve>, start: usize, end: usize) -> usize {
     let mut dist: HashMap<usize, usize> = HashMap::new();
     let mut prev: HashMap<usize, usize> = HashMap::new();
@@ -165,19 +233,6 @@ fn distance_between(valves: &Vec<Valve>) -> Vec<Vec<usize>> {
     distances
 }
 
-fn can_move_to(
-    unopened: &HashSet<usize>,
-    pos: usize,
-    steps: usize,
-    distances: &Vec<Vec<usize>>,
-) -> Vec<usize> {
-    unopened
-        .iter()
-        .filter(|i| distances[pos][**i] < steps)
-        .map(|i| *i)
-        .collect()
-}
-
 fn max_pressure_released(valves: &Vec<Valve>, use_elephant: bool) -> usize {
     let mut heap = BinaryHeap::new();
     heap.push(State {
@@ -185,13 +240,23 @@ fn max_pressure_released(valves: &Vec<Valve>, use_elephant: bool) -> usize {
             .filter(|v| valves[*v].flow_rate > 0)
             .collect(),
         pressure_released: 0,
-        me_steps: if use_elephant { 26 } else { 30 },
-        me_valve: 0,
-        elephant_steps: if use_elephant { 26 } else { 0 },
-        elephant_valve: 0,
+        pos0: Position {
+            steps: if use_elephant { 26 } else { 30 },
+            valve: 0,
+        },
+        pos1: Position {
+            steps: if use_elephant { 26 } else { 0 },
+            valve: 0,
+        },
     });
 
     let distances = distance_between(valves);
+
+    // TODO
+    // 1. Need to eliminate symmetries (i.e. me and the elephant can swap places with the same outcome)
+    // 2. Idea: every time a valve is opened, recurse.
+    //    - shouldn't run out of stack
+    //    - means we can start memoizing by "remaining state". As long as key breaks symmetry, we explore far fewer paths.
 
     let mut most_pressure_released = 0;
     while let Some(current) = heap.pop() {
@@ -200,100 +265,25 @@ fn max_pressure_released(valves: &Vec<Valve>, use_elephant: bool) -> usize {
         } else if current.unopened.is_empty() {
             most_pressure_released = most_pressure_released.max(current.pressure_released)
         } else {
-            let mut me_moves = can_move_to(
-                &current.unopened,
-                current.me_valve,
-                current.me_steps,
-                &distances,
-            );
+            let (moves0, moves1) = current.get_moves(&distances);
 
-            let mut elephant_moves = can_move_to(
-                &current.unopened,
-                current.elephant_valve,
-                current.elephant_steps,
-                &distances,
-            );
-
-            if me_moves.len() == 1 && elephant_moves.len() == 1 && me_moves[0] == elephant_moves[0]
-            {
-                let me_dist = distances[current.me_valve][me_moves[0]];
-                let elephant_dist = distances[current.elephant_valve][me_moves[0]];
-                if me_dist < elephant_dist {
-                    elephant_moves.clear()
-                } else {
-                    me_moves.clear()
-                }
-            }
-
-            if me_moves.is_empty() && elephant_moves.is_empty() {
+            if moves0.is_empty() && moves1.is_empty() {
                 most_pressure_released = most_pressure_released.max(current.pressure_released);
-            } else if elephant_moves.is_empty() {
-                for me_valve in me_moves {
-                    let me_steps = current.me_steps - distances[current.me_valve][me_valve] - 1;
-                    let pressure_released =
-                        current.pressure_released + me_steps * valves[me_valve].flow_rate;
-                    let unopened = current
-                        .unopened
-                        .difference(&HashSet::from([me_valve]))
-                        .map(|v| *v)
-                        .collect();
-                    heap.push(State {
-                        unopened,
-                        me_steps,
-                        pressure_released,
-                        me_valve,
-                        elephant_steps: current.elephant_steps,
-                        elephant_valve: current.elephant_valve,
-                    })
+            } else if moves1.is_empty() {
+                for move0 in moves0 {
+                    heap.push(current.update(valves, &distances, Some(move0), None))
                 }
-            } else if me_moves.is_empty() {
-                for elephant_valve in me_moves {
-                    let elephant_steps = current.elephant_steps
-                        - distances[current.elephant_valve][elephant_valve]
-                        - 1;
-                    let pressure_released = current.pressure_released
-                        + elephant_steps * valves[elephant_valve].flow_rate;
-                    let unopened = current
-                        .unopened
-                        .difference(&HashSet::from([elephant_valve]))
-                        .map(|v| *v)
-                        .collect();
-                    heap.push(State {
-                        unopened,
-                        me_steps: current.me_steps,
-                        pressure_released,
-                        me_valve: current.me_valve,
-                        elephant_steps,
-                        elephant_valve,
-                    })
+            } else if moves0.is_empty() {
+                for move1 in moves1 {
+                    heap.push(current.update(valves, &distances, None, Some(move1)))
                 }
             } else {
-                for me_valve in me_moves {
-                    for elephant_valve in &elephant_moves {
-                        if me_valve == *elephant_valve {
+                for move0 in moves0 {
+                    for move1 in &moves1 {
+                        if move0 == *move1 {
                             continue;
                         }
-
-                        let me_steps = current.me_steps - distances[current.me_valve][me_valve] - 1;
-                        let elephant_steps = current.elephant_steps
-                            - distances[current.elephant_valve][*elephant_valve]
-                            - 1;
-                        let pressure_released = current.pressure_released
-                            + elephant_steps * valves[*elephant_valve].flow_rate
-                            + me_steps * valves[me_valve].flow_rate;
-                        let unopened = current
-                            .unopened
-                            .difference(&HashSet::from([me_valve, *elephant_valve]))
-                            .map(|v| *v)
-                            .collect();
-                        heap.push(State {
-                            unopened,
-                            me_steps,
-                            pressure_released,
-                            me_valve,
-                            elephant_steps,
-                            elephant_valve: *elephant_valve,
-                        })
+                        heap.push(current.update(valves, &distances, Some(move0), Some(*move1)))
                     }
                 }
             }
