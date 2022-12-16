@@ -1,4 +1,5 @@
 use super::utils::read_to_vec;
+use std::cmp::Ordering;
 
 struct Sensor {
     x: i64,
@@ -10,6 +11,25 @@ struct Sensor {
 struct Range {
     end: i64,
     start: i64,
+}
+
+#[derive(Debug)]
+enum Line {
+    Positive(i64),
+    Negative(i64),
+}
+
+impl Line {
+    fn intersect(&self, other: &Line) -> Option<(i64, i64)> {
+        match (self, other) {
+            (Line::Positive(c0), Line::Negative(c1)) | (Line::Negative(c1), Line::Positive(c0)) => {
+                let x = -(c1 - c0) / 2;
+                let y = c0 - x;
+                Some((x, y))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Sensor {
@@ -32,13 +52,26 @@ impl Sensor {
         dx + dy - self.r - other.r
     }
 
-    fn midpoint(&self, other: &Sensor) -> (i64, i64) {
-        let dx = (other.x - self.x) as f32;
-        let dy = (other.y - self.y) as f32;
-        let length = (dx * dx + dy * dy).sqrt();
-        let x = (self.x as f32) + (dx * (self.r as f32)) / length;
-        let y = (self.y as f32) + (dy * (self.r as f32)) / length;
-        (x as i64, y as i64)
+    fn separator(&self, other: &Sensor) -> Option<Line> {
+        match (self.x.cmp(&other.x), self.y.cmp(&other.y)) {
+            (Ordering::Less, Ordering::Less) => {
+                let x = self.x + self.r + 1;
+                Some(Line::Positive(self.y + x))
+            }
+            (Ordering::Greater, Ordering::Greater) => {
+                let x = self.x - self.r - 1;
+                Some(Line::Positive(self.y + x))
+            }
+            (Ordering::Less, Ordering::Greater) => {
+                let x = self.x + self.r + 1;
+                Some(Line::Negative(self.y - x))
+            }
+            (Ordering::Greater, Ordering::Less) => {
+                let x = self.x - self.r - 1;
+                Some(Line::Negative(self.y - x))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -119,38 +152,17 @@ fn part1(sensors: &Vec<Sensor>, y: i64) -> i64 {
     size(&empty)
 }
 
-fn get_explore_range(sensors: &Vec<Sensor>) -> (i64, i64) {
-    let mut gaps = (0..sensors.len())
+fn part2(sensors: &Vec<Sensor>) -> i64 {
+    let lines = (0..sensors.len())
         .flat_map(|i| {
             (i + 1..sensors.len()).filter_map(move |j| match sensors[i].gap_to(&sensors[j]) {
-                2 => Some(sensors[i].midpoint(&sensors[j]).1),
+                2 => sensors[i].separator(&sensors[j]),
                 _ => None,
             })
         })
-        .collect::<Vec<i64>>();
+        .collect::<Vec<Line>>();
 
-    // TODO
-    // there is an analytical solution here. Need to find the two lines and then
-    // intersect them.
-
-    gaps.sort();
-    (gaps[0], gaps[gaps.len() - 1])
-}
-
-fn part2(sensors: &Vec<Sensor>, size: i64) -> i64 {
-    let bounds = Some(Range {
-        start: 0,
-        end: size,
-    });
-
-    let (start, end) = get_explore_range(sensors);
-
-    let (x, y) = (start..end)
-        .map(|y| (y, empty_ranges(sensors, y, &bounds)))
-        .filter(|(_, rs)| rs.len() > 1)
-        .map(|(y, rs)| (rs[rs.len() - 1].end, y))
-        .next()
-        .unwrap();
+    let (x, y) = lines[0].intersect(&lines[1]).unwrap();
     x * 4000000 + y
 }
 
@@ -158,5 +170,5 @@ pub fn run() {
     let sensors = read_to_vec("data/day15.txt", to_sensor);
     println!("== Day 15 ==");
     println!("Part 1: {}", part1(&sensors, 10));
-    println!("Part 2: {}", part2(&sensors, 4000000));
+    println!("Part 2: {}", part2(&sensors));
 }
