@@ -1,16 +1,15 @@
 use super::utils::read_to_vec;
 
-#[derive(Debug)]
 struct Sensor {
     x: i64,
     y: i64,
     r: i64,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Ord, PartialOrd, Eq, PartialEq)]
 struct Range {
-    start: i64,
     end: i64,
+    start: i64,
 }
 
 impl Sensor {
@@ -26,6 +25,21 @@ impl Sensor {
             }
         }
     }
+
+    fn gap_to(&self, other: &Sensor) -> i64 {
+        let dx = (self.x - other.x).abs();
+        let dy = (self.y - other.y).abs();
+        dx + dy - self.r - other.r
+    }
+
+    fn midpoint(&self, other: &Sensor) -> (i64, i64) {
+        let dx = (other.x - self.x) as f32;
+        let dy = (other.y - self.y) as f32;
+        let length = (dx * dx + dy * dy).sqrt();
+        let x = (self.x as f32) + (dx * (self.r as f32)) / length;
+        let y = (self.y as f32) + (dy * (self.r as f32)) / length;
+        (x as i64, y as i64)
+    }
 }
 
 impl Range {
@@ -33,10 +47,14 @@ impl Range {
         other.end > self.start && self.end >= other.start
     }
 
-    fn union_with(&self, other: &Range) -> Range {
-        Range {
-            start: self.start.min(other.start),
-            end: self.end.max(other.end),
+    fn union_with(&self, other: &Range) -> Option<Range> {
+        if self.intersects(other) {
+            Some(Range {
+                start: self.start.min(other.start),
+                end: self.end.max(other.end),
+            })
+        } else {
+            None
         }
     }
 
@@ -70,25 +88,26 @@ fn size(ranges: &Vec<Range>) -> i64 {
     ranges.iter().map(|r| r.len()).sum()
 }
 
-fn empty_ranges(
-    sensors: &Vec<Sensor>,
-    intersect: fn(&Sensor, i64) -> Option<Range>,
-    value: i64,
-) -> Vec<Range> {
+fn empty_ranges(sensors: &Vec<Sensor>, y: i64, bounds: &Option<Range>) -> Vec<Range> {
     let mut ranges = sensors
         .iter()
-        .filter_map(|s| intersect(s, value))
+        .filter_map(|s| match (s.intersect_y(y), bounds) {
+            (Some(r0), Some(r1)) => r0.intersect_with(&r1),
+            (Some(r0), None) => Some(r0),
+            _ => None,
+        })
         .collect::<Vec<Range>>();
 
-    ranges.sort();
+    ranges.sort_unstable();
 
-    let mut i = 0;
-    while i < ranges.len() - 1 {
-        if ranges[i].intersects(&ranges[i + 1]) {
-            let r = ranges.remove(i + 1);
-            ranges[i] = ranges[i].union_with(&r);
+    while ranges.len() > 1 {
+        let r1 = ranges.pop().unwrap();
+        let r0 = ranges.pop().unwrap();
+        if let Some(r) = r0.union_with(&r1) {
+            ranges.push(r)
         } else {
-            i += 1;
+            ranges.push(r0);
+            break;
         }
     }
 
@@ -96,28 +115,35 @@ fn empty_ranges(
 }
 
 fn part1(sensors: &Vec<Sensor>, y: i64) -> i64 {
-    let empty = empty_ranges(sensors, |s, v| s.intersect_y(v), y);
+    let empty = empty_ranges(sensors, y, &None);
     size(&empty)
 }
 
+fn get_explore_range(sensors: &Vec<Sensor>) -> (i64, i64) {
+    let mut gaps = (0..sensors.len())
+        .flat_map(|i| {
+            (i + 1..sensors.len()).filter_map(move |j| match sensors[i].gap_to(&sensors[j]) {
+                2 => Some(sensors[i].midpoint(&sensors[j]).1),
+                _ => None,
+            })
+        })
+        .collect::<Vec<i64>>();
+    gaps.sort();
+    (gaps[0], gaps[gaps.len() - 1])
+}
+
 fn part2(sensors: &Vec<Sensor>, size: i64) -> i64 {
-    let bounds = Range {
+    let bounds = Some(Range {
         start: 0,
         end: size,
-    };
+    });
 
-    let (x, y) = (0..size)
-        .map(|y| {
-            (
-                y,
-                empty_ranges(sensors, |s, v| s.intersect_y(v), y)
-                    .iter()
-                    .filter_map(|r| r.intersect_with(&bounds))
-                    .collect::<Vec<Range>>(),
-            )
-        })
-        .filter(|(_, rs)| rs.len() == 2)
-        .map(|(y, rs)| (rs[0].end, y))
+    let (start, end) = get_explore_range(sensors);
+
+    let (x, y) = (start..end)
+        .map(|y| (y, empty_ranges(sensors, y, &bounds)))
+        .filter(|(_, rs)| rs.len() > 1)
+        .map(|(y, rs)| (rs[rs.len() - 1].end, y))
         .next()
         .unwrap();
     x * 4000000 + y
