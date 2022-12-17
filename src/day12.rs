@@ -1,31 +1,8 @@
-use super::utils::read_to_vec;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use crate::utils::{astar_search, read_to_vec, reconstruct_path, SearchInfo};
+
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 type Cell = (usize, usize);
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct State {
-    position: Cell,
-    cost: usize,
-}
-
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .cmp(&self.cost)
-            .then_with(|| self.position.cmp(&other.position))
-    }
-}
-
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
 const MAX: usize = 25;
 const MIN: usize = 0;
@@ -60,8 +37,8 @@ struct Map {
 }
 
 impl Map {
-    fn to_neighbor(&self, square: Cell, other: Cell) -> Option<Cell> {
-        let neighbor = match [square, other] {
+    fn to_neighbor(&self, square: &Cell, other: Cell) -> Option<Cell> {
+        let neighbor = match [*square, other] {
             [(r0, c0), (r1, c1)] if self.squares[r0][c0].can_reach(&self.squares[r1][c1]) => {
                 Some(other)
             }
@@ -69,7 +46,10 @@ impl Map {
         };
         neighbor
     }
-    fn neighbors(&self, square: Cell) -> Vec<Cell> {
+}
+
+impl SearchInfo<Cell, usize> for Map {
+    fn neighbors(&self, square: &Cell) -> Vec<Cell> {
         let r = square.0 as i32;
         let c = square.1 as i32;
         [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)]
@@ -83,6 +63,32 @@ impl Map {
             .filter_map(|c| c)
             .filter_map(|c| self.to_neighbor(square, c))
             .collect()
+    }
+
+    fn distance(&self, lhs: &Cell, rhs: &Cell) -> usize {
+        let (r0, c0) = (lhs.0 as i32, lhs.1 as i32);
+        let (r1, c1) = (rhs.0 as i32, rhs.1 as i32);
+        ((r0 - r1).abs() + (c0 - c1).abs()) as usize
+    }
+
+    fn heuristic(&self, node: &Cell) -> usize {
+        self.distance(node, &self.end)
+    }
+
+    fn start(&self) -> Cell {
+        self.start
+    }
+
+    fn is_goal(&self, cell: &Cell) -> bool {
+        self.end.0 == cell.0 && self.end.1 == cell.1
+    }
+
+    fn infinity(&self) -> usize {
+        usize::MAX
+    }
+
+    fn zero(&self) -> usize {
+        0
     }
 }
 
@@ -120,8 +126,8 @@ fn parse_map() -> Map {
     let squares: Vec<Vec<Square>> = read_to_vec("data/day12.txt", to_squares);
     let rows = squares.len();
     let cols = squares[0].len();
-    let start = find_terminal(&squares, Square::Start);
-    let end = find_terminal(&squares, Square::End);
+    let start = find_terminal(&squares, Square::End);
+    let end = find_terminal(&squares, Square::Start);
     Map {
         squares,
         rows,
@@ -131,57 +137,13 @@ fn parse_map() -> Map {
     }
 }
 
-fn find_all_paths(map: &Map) -> HashMap<Cell, Cell> {
-    let mut dist: HashMap<Cell, usize> = HashMap::new();
-    let mut prev: HashMap<Cell, Cell> = HashMap::new();
-    let mut vertices: HashSet<Cell> = HashSet::new();
-    let mut min_heap = BinaryHeap::new();
-    for r in 0..map.rows {
-        for c in 0..map.cols {
-            dist.insert((r, c), INFINITY);
-            vertices.insert((r, c));
-        }
-    }
-
-    dist.insert(map.end, 0);
-    min_heap.push(State {
-        position: map.end,
-        cost: 0,
-    });
-    while let Some(state) = min_heap.pop() {
-        let u = &state.position;
-        vertices.remove(u);
-        if dist[u] == INFINITY {
-            break;
-        }
-
-        for v in map
-            .neighbors(*u)
-            .into_iter()
-            .filter(|v| vertices.contains(v))
-        {
-            let alt = dist[u] + 1;
-            if alt < dist[&v] {
-                dist.insert(v, alt);
-                prev.insert(v, *u);
-                min_heap.push(State {
-                    position: v,
-                    cost: alt,
-                })
-            }
-        }
-    }
-
-    prev
-}
-
 fn path_length(prev: &HashMap<Cell, Cell>, start: Cell, end: Cell) -> usize {
     let mut length = 0usize;
-    if !prev.contains_key(&start) {
+    if !prev.contains_key(&end) {
         return INFINITY;
     }
-    let mut current = start;
-    while current != end {
+    let mut current = end;
+    while current != start {
         length += 1;
         current = prev[&current];
     }
@@ -198,7 +160,7 @@ fn part2(map: &Map, prev: &HashMap<Cell, Cell>) -> usize {
         .flat_map(|r| (0..map.cols).into_iter().map(move |c| (r, c)))
         .into_iter()
         .filter_map(|(r, c)| match map.squares[r][c] {
-            Square::Ground(0) | Square::Start => Some(path_length(prev, (r, c), map.end)),
+            Square::Ground(0) | Square::Start => Some(path_length(prev, map.start, (r, c))),
             _ => None,
         })
         .min()
@@ -207,7 +169,7 @@ fn part2(map: &Map, prev: &HashMap<Cell, Cell>) -> usize {
 
 pub fn run() {
     let map = parse_map();
-    let prev = find_all_paths(&map);
+    let prev = astar_search(&map).unwrap();
     println!("== Day 12 ==");
     println!("Part 1: {}", part1(&map, &prev));
     println!("Part 2: {}", part2(&map, &prev))
