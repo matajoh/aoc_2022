@@ -1,4 +1,4 @@
-use crate::utils::{astar_search, read_to_vec, reconstruct_path, SearchInfo};
+use crate::utils::{astar_search, read_to_vec, SearchInfo};
 
 use std::collections::HashMap;
 
@@ -169,7 +169,7 @@ fn part2(map: &Map, prev: &HashMap<Cell, Cell>) -> usize {
 
 pub fn run() {
     let map = parse_map();
-    let prev = astar_search(&map).unwrap();
+    let prev = astar_search(&map).unwrap().0;
     println!("== Day 12 ==");
     println!("Part 1: {}", part1(&map, &prev));
     println!("Part 2: {}", part2(&map, &prev))

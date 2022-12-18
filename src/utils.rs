@@ -86,12 +86,13 @@ impl<T, I: Ord + PartialOrd> PartialEq for Ranking<T, I> {
     }
 }
 
-pub fn reconstruct_path<T: Eq + Hash + Copy>(came_from: &HashMap<T, T>, end: &T) -> Vec<T> {
+pub fn reconstruct_path<T: Eq + Hash + Copy>(search_result: &(HashMap<T, T>, T)) -> Vec<T> {
+    let (came_from, end) = search_result;
     let mut path = vec![*end];
-    let mut current = end;
+    let mut current = *end;
     while came_from.contains_key(&current) {
-        current = &came_from[&current];
-        path.push(*current);
+        current = came_from[&current];
+        path.push(current);
     }
     path.reverse();
     path
@@ -103,7 +104,7 @@ pub fn astar_search<
     S: SearchInfo<T, I>,
 >(
     info: &S,
-) -> Option<HashMap<T, T>> {
+) -> Option<(HashMap<T, T>, T)> {
     let mut open_set = HashSet::new();
     open_set.insert(info.start());
 
@@ -118,7 +119,7 @@ pub fn astar_search<
     while !open_set.is_empty() {
         let current = f_score.pop().unwrap().0;
         if info.is_goal(&current) {
-            return Some(came_from);
+            return Some((came_from, current));
         }
 
         open_set.remove(&current);
