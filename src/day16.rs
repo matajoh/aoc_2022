@@ -1,4 +1,7 @@
+use crate::utils::astar_search;
 use crate::utils::read_to_vec;
+use crate::utils::reconstruct_path;
+use crate::utils::SearchInfo;
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -27,54 +30,55 @@ impl PartialOrd for PathState {
     }
 }
 
-fn min_path(valves: &Vec<Valve>, start: usize, end: usize) -> usize {
-    let mut dist: HashMap<usize, usize> = HashMap::new();
-    let mut prev: HashMap<usize, usize> = HashMap::new();
-    let mut vertices: HashSet<usize> = HashSet::new();
-    let mut min_heap = BinaryHeap::new();
-    for i in 0..valves.len() {
-        dist.insert(i, usize::MAX);
-        vertices.insert(i);
+struct Tunnels {
+    valves: Vec<Valve>,
+    start: usize,
+    end: usize,
+}
+
+impl SearchInfo<usize, usize> for Tunnels {
+    fn neighbors(&self, node: &usize) -> Vec<usize> {
+        self.valves[*node].leads_to.clone()
     }
 
-    dist.insert(start, 0);
-    min_heap.push(PathState {
-        position: start,
-        cost: 0,
-    });
-    while let Some(state) = min_heap.pop() {
-        let u = &state.position;
-        vertices.remove(u);
-        if dist[u] == usize::MAX {
-            break;
-        }
-
-        for v in &valves[*u].leads_to {
-            let alt = dist[u] + 1;
-            if alt < dist[v] {
-                dist.insert(*v, alt);
-                prev.insert(*v, *u);
-                min_heap.push(PathState {
-                    position: *v,
-                    cost: alt,
-                })
-            }
-        }
+    fn heuristic(&self, _: &usize) -> usize {
+        0
     }
 
-    let mut length = 0;
-    let mut current = end;
-    while current != start {
-        current = prev[&current];
-        length += 1;
+    fn distance(&self, _: &usize, _: &usize) -> usize {
+        1
     }
-    length
+
+    fn start(&self) -> usize {
+        self.start
+    }
+
+    fn is_goal(&self, node: &usize) -> bool {
+        *node == self.end
+    }
+
+    fn infinity(&self) -> usize {
+        usize::MAX
+    }
+
+    fn zero(&self) -> usize {
+        0
+    }
 }
 
 #[derive(Debug)]
 struct Valve {
     flow_rate: usize,
     leads_to: Vec<usize>,
+}
+
+impl Clone for Valve {
+    fn clone(&self) -> Self {
+        Valve {
+            flow_rate: self.flow_rate,
+            leads_to: self.leads_to.clone(),
+        }
+    }
 }
 
 #[derive(Hash, Copy, Clone, Eq, PartialEq)]
@@ -227,10 +231,18 @@ fn read_valves() -> Vec<Valve> {
 
 fn distance_between(valves: &Vec<Valve>) -> Vec<Vec<usize>> {
     let mut distances = vec![vec![0; valves.len()]; valves.len()];
+    let mut tunnels = Tunnels {
+        valves: valves.clone(),
+        start: 0,
+        end: 0,
+    };
     for i in 0..valves.len() {
         distances[i][i] = 0;
+        tunnels.start = i;
         for j in i + 1..valves.len() {
-            distances[i][j] = min_path(valves, i, j);
+            tunnels.end = j;
+            let length = reconstruct_path(&astar_search(&tunnels).unwrap()).len() - 1;
+            distances[i][j] = length;
             distances[j][i] = distances[i][j];
         }
     }
