@@ -1,7 +1,6 @@
-use crate::utils::astar_search;
+use crate::utils::min_path;
 use crate::utils::read_to_vec;
-use crate::utils::reconstruct_path;
-use crate::utils::SearchInfo;
+use crate::utils::GraphNode;
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -9,67 +8,16 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Instant;
 
-#[derive(Eq, PartialEq)]
-struct PathState {
-    position: usize,
-    cost: usize,
-}
-
-impl Ord for PathState {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .cmp(&self.cost)
-            .then_with(|| self.position.cmp(&other.position))
-    }
-}
-
-impl PartialOrd for PathState {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-struct Tunnels {
-    valves: Vec<Valve>,
-    start: usize,
-    end: usize,
-}
-
-impl SearchInfo<usize, usize> for Tunnels {
-    fn neighbors(&self, node: &usize) -> Vec<usize> {
-        self.valves[*node].leads_to.clone()
-    }
-
-    fn heuristic(&self, _: &usize) -> usize {
-        0
-    }
-
-    fn distance(&self, _: &usize, _: &usize) -> usize {
-        1
-    }
-
-    fn start(&self) -> usize {
-        self.start
-    }
-
-    fn is_goal(&self, node: &usize) -> bool {
-        *node == self.end
-    }
-
-    fn infinity(&self) -> usize {
-        usize::MAX
-    }
-
-    fn zero(&self) -> usize {
-        0
-    }
-}
-
 #[derive(Debug)]
 struct Valve {
     flow_rate: usize,
     leads_to: Vec<usize>,
+}
+
+impl GraphNode for Valve {
+    fn neighbors(&self) -> Vec<usize> {
+        self.leads_to.clone()
+    }
 }
 
 impl Clone for Valve {
@@ -87,91 +35,110 @@ struct Position {
     valve: usize,
 }
 
+struct Cavern {
+    valves: Vec<Valve>,
+    distances: Vec<Vec<usize>>,
+    use_elephant: bool,
+}
+
 #[derive(Hash, Copy, Clone, Eq, PartialEq)]
 struct State {
-    unopened: u64,
+    opened: u64,
     pressure_released: usize,
     pos0: Position,
     pos1: Position,
 }
 
-fn to_valves(unopened: u64) -> Vec<usize> {
-    (0..60)
-        .into_iter()
-        .filter(|s| (unopened & (1 << s)) > 0)
-        .collect()
+fn open_valves(opened: u64, valve0: usize, valve1: usize) -> u64 {
+    opened | (1 << valve0) | (1 << valve1)
 }
 
-fn open(unopened: u64, v0: usize, v1: usize) -> u64 {
-    let clear = ((1 << v0) | (1 << v1)) ^ u64::MAX;
-    unopened & clear
-}
+impl Cavern {
+    fn start(&self) -> State {
+        State {
+            opened: 0,
+            pressure_released: 0,
+            pos0: Position {
+                steps: if self.use_elephant { 26 } else { 30 },
+                valve: 0,
+            },
+            pos1: Position {
+                steps: if self.use_elephant { 26 } else { 0 },
+                valve: 0,
+            },
+        }
+    }
 
-fn can_move_to(unopened: u64, distances: &Vec<Vec<usize>>, pos: &Position) -> Vec<usize> {
-    to_valves(unopened)
-        .iter()
-        .filter(|i| distances[pos.valve][**i] < pos.steps)
-        .map(|i| *i)
-        .collect()
-}
-
-impl State {
-    fn max_outcome(&self, valves: &Vec<Valve>) -> usize {
-        let mut flows = to_valves(self.unopened)
-            .iter()
-            .map(|i| valves[*i].flow_rate)
+    fn new(valves: &Vec<Valve>, use_elephant: bool) -> Cavern {
+        Cavern {
+            valves: valves.clone(),
+            distances: distance_between(valves),
+            use_elephant: use_elephant,
+        }
+    }
+    fn heuristic(&self, state: &State) -> usize {
+        let mut flows = (0..self.valves.len())
+            .map(|i| self.valves[i].flow_rate)
             .collect::<Vec<usize>>();
         flows.sort();
         flows.reverse();
-        self.pressure_released
+        let steps = if self.use_elephant {
+            state.pos0.steps.min(state.pos1.steps)
+        } else {
+            state.pos0.steps
+        };
+
+        state.pressure_released
             + flows
                 .iter()
                 .enumerate()
                 .map(|(i, f)| match 2 * i {
-                    s if s < self.pos0.steps => (self.pos0.steps - s) * f,
+                    s if s < steps => (steps - s) * f,
                     _ => 0,
                 })
                 .sum::<usize>()
     }
 
-    fn update(
-        &self,
-        valves: &Vec<Valve>,
-        distances: &Vec<Vec<usize>>,
-        move0: Option<usize>,
-        move1: Option<usize>,
-    ) -> State {
+    fn update(&self, state: &State, move0: Option<usize>, move1: Option<usize>) -> State {
         let pos0 = match move0 {
             Some(valve) => Position {
-                steps: self.pos0.steps - distances[self.pos0.valve][valve] - 1,
+                steps: state.pos0.steps - self.distances[state.pos0.valve][valve] - 1,
                 valve,
             },
             None => Position { steps: 0, valve: 0 },
         };
         let pos1 = match move1 {
             Some(valve) => Position {
-                steps: self.pos1.steps - distances[self.pos1.valve][valve] - 1,
+                steps: state.pos1.steps - self.distances[state.pos1.valve][valve] - 1,
                 valve,
             },
             None => Position { steps: 0, valve: 0 },
         };
 
         State {
-            unopened: open(self.unopened, pos0.valve, pos1.valve),
-            pressure_released: self.pressure_released
-                + pos0.steps * valves[pos0.valve].flow_rate
-                + pos1.steps * valves[pos1.valve].flow_rate,
+            opened: open_valves(state.opened, pos0.valve, pos1.valve),
+            pressure_released: state.pressure_released
+                + pos0.steps * self.valves[pos0.valve].flow_rate
+                + pos1.steps * self.valves[pos1.valve].flow_rate,
             pos0,
             pos1,
         }
     }
 
-    fn get_moves(&self, distances: &Vec<Vec<usize>>) -> (Vec<usize>, Vec<usize>) {
-        let mut moves0 = can_move_to(self.unopened, distances, &self.pos0);
-        let mut moves1 = can_move_to(self.unopened, distances, &self.pos1);
+    fn can_move_to(&self, opened: u64, pos: &Position) -> Vec<usize> {
+        (0..self.valves.len())
+            .filter(|i| opened & (1 << i) == 0)
+            .filter(|i| self.distances[pos.valve][*i] < pos.steps)
+            .filter(|i| self.valves[*i].flow_rate > 0)
+            .collect()
+    }
+
+    fn get_moves(&self, state: &State) -> (Vec<usize>, Vec<usize>) {
+        let mut moves0 = self.can_move_to(state.opened, &state.pos0);
+        let mut moves1 = self.can_move_to(state.opened, &state.pos1);
         if moves0.len() == 1 && moves1.len() == 1 && moves0[0] == moves1[0] {
-            let dist0 = distances[self.pos0.valve][moves0[0]];
-            let dist1 = distances[self.pos1.valve][moves0[0]];
+            let dist0 = self.distances[state.pos0.valve][moves0[0]];
+            let dist1 = self.distances[state.pos1.valve][moves0[0]];
             if dist0 < dist1 {
                 moves1.clear()
             } else {
@@ -231,17 +198,10 @@ fn read_valves() -> Vec<Valve> {
 
 fn distance_between(valves: &Vec<Valve>) -> Vec<Vec<usize>> {
     let mut distances = vec![vec![0; valves.len()]; valves.len()];
-    let mut tunnels = Tunnels {
-        valves: valves.clone(),
-        start: 0,
-        end: 0,
-    };
     for i in 0..valves.len() {
         distances[i][i] = 0;
-        tunnels.start = i;
         for j in i + 1..valves.len() {
-            tunnels.end = j;
-            let length = reconstruct_path(&astar_search(&tunnels).unwrap()).len() - 1;
+            let length = min_path(valves, i, j).unwrap().len() - 1;
             distances[i][j] = length;
             distances[j][i] = distances[i][j];
         }
@@ -251,57 +211,32 @@ fn distance_between(valves: &Vec<Valve>) -> Vec<Vec<usize>> {
 }
 
 fn max_pressure_released(valves: &Vec<Valve>, use_elephant: bool) -> usize {
+    let cavern = Cavern::new(valves, use_elephant);
     let mut heap = BinaryHeap::new();
-    let unopened = (0..valves.len())
-        .enumerate()
-        .filter_map(|(i, v)| {
-            if valves[v].flow_rate > 0 {
-                Some(i)
-            } else {
-                None
-            }
-        })
-        .map(|i| 1u64 << i)
-        .fold(0u64, |a, b| a | b);
-    heap.push(State {
-        unopened,
-        pressure_released: 0,
-        pos0: Position {
-            steps: if use_elephant { 26 } else { 30 },
-            valve: 0,
-        },
-        pos1: Position {
-            steps: if use_elephant { 26 } else { 0 },
-            valve: 0,
-        },
-    });
-
-    let distances = distance_between(valves);
+    heap.push(cavern.start());
 
     let mut seen = HashSet::new();
 
     let mut most_pressure_released = 0;
     while let Some(current) = heap.pop() {
         seen.insert(current);
-        if current.max_outcome(valves) < most_pressure_released {
+        if cavern.heuristic(&current) < most_pressure_released {
             continue;
-        } else if current.unopened == 0 {
-            most_pressure_released = most_pressure_released.max(current.pressure_released)
         } else {
-            let (moves0, moves1) = current.get_moves(&distances);
+            let (moves0, moves1) = cavern.get_moves(&current);
 
             if moves0.is_empty() && moves1.is_empty() {
                 most_pressure_released = most_pressure_released.max(current.pressure_released);
             } else if moves1.is_empty() {
                 for move0 in moves0 {
-                    let next = current.update(valves, &distances, Some(move0), None);
+                    let next = cavern.update(&current, Some(move0), None);
                     if !seen.contains(&next) {
                         heap.push(next)
                     }
                 }
             } else if moves0.is_empty() {
                 for move1 in moves1 {
-                    let next = current.update(valves, &distances, None, Some(move1));
+                    let next = cavern.update(&current, None, Some(move1));
                     if !seen.contains(&next) {
                         heap.push(next)
                     }
@@ -312,7 +247,7 @@ fn max_pressure_released(valves: &Vec<Valve>, use_elephant: bool) -> usize {
                         if move0 == *move1 {
                             continue;
                         }
-                        let next = current.update(valves, &distances, Some(move0), Some(*move1));
+                        let next = cavern.update(&current, Some(move0), Some(*move1));
                         if !seen.contains(&next) {
                             heap.push(next)
                         }
