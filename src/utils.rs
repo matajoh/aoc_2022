@@ -145,3 +145,59 @@ pub fn astar_search<
 
     None
 }
+
+pub trait GraphNode {
+    fn neighbors(&self) -> Vec<usize>;
+}
+
+struct Graph<N: GraphNode> {
+    nodes: Vec<N>,
+    start: usize,
+    end: usize,
+}
+
+impl<N: GraphNode> SearchInfo<usize, usize> for Graph<N> {
+    fn neighbors(&self, n: &usize) -> Vec<usize> {
+        self.nodes[*n].neighbors()
+    }
+
+    fn heuristic(&self, _: &usize) -> usize {
+        0
+    }
+
+    fn distance(&self, _: &usize, _: &usize) -> usize {
+        1
+    }
+
+    fn start(&self) -> usize {
+        self.start
+    }
+
+    fn is_goal(&self, n: &usize) -> bool {
+        self.end == *n
+    }
+
+    fn infinity(&self) -> usize {
+        usize::MAX
+    }
+
+    fn zero(&self) -> usize {
+        0
+    }
+}
+
+pub fn min_path<N: GraphNode + Clone>(
+    nodes: &Vec<N>,
+    start: usize,
+    end: usize,
+) -> Option<Vec<usize>> {
+    let graph = Graph {
+        nodes: nodes.clone(),
+        start,
+        end,
+    };
+    match astar_search(&graph) {
+        Some(result) => Some(reconstruct_path(&result)),
+        None => None,
+    }
+}
