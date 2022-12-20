@@ -1,6 +1,5 @@
 use crate::utils::read_to_vec;
 
-#[derive(Debug)]
 struct Node {
     delta: i64,
     prev: usize,

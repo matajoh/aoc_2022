@@ -34,14 +34,14 @@ impl Round {
 
     fn score(&self) -> i32 {
         let outcome_score = match self.outcome() {
-            Outcome::Win => 6i32,
-            Outcome::Lose => 0i32,
-            Outcome::Draw => 3i32,
+            Outcome::Win => 6,
+            Outcome::Lose => 0,
+            Outcome::Draw => 3,
         };
         let move_score = match &self.second {
-            Move::Rock => 1i32,
-            Move::Paper => 2i32,
-            Move::Scissors => 3i32,
+            Move::Rock => 1,
+            Move::Paper => 2,
+            Move::Scissors => 3,
         };
         outcome_score + move_score
     }
