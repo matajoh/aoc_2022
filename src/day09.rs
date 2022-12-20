@@ -1,4 +1,4 @@
-use super::utils::read_some_to_vec;
+use crate::utils::read_some_to_vec;
 use std::collections::HashSet;
 
 enum Move {

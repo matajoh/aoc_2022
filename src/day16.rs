@@ -6,9 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::time::Instant;
 
-#[derive(Debug)]
 struct Valve {
     flow_rate: usize,
     leads_to: Vec<usize>,
@@ -154,8 +152,8 @@ impl Ord for State {
     fn cmp(&self, other: &Self) -> Ordering {
         self.pressure_released
             .cmp(&other.pressure_released)
-            .then_with(|| self.pos0.steps.cmp(&other.pos0.steps))
-            .then_with(|| self.pos1.steps.cmp(&other.pos1.steps))
+            .then_with(|| other.pos0.steps.cmp(&self.pos0.steps))
+            .then_with(|| other.pos1.steps.cmp(&self.pos1.steps))
     }
 }
 
@@ -271,7 +269,5 @@ pub fn run() {
     let valves = read_valves();
     println!("== Day 16 ==");
     println!("Part 1: {}", part1(&valves));
-    let start = Instant::now();
     println!("Part 2: {}", part2(&valves));
-    println!("{:?}", Instant::now() - start)
 }

@@ -1,4 +1,4 @@
-use super::utils::read_to_vec;
+use crate::utils::read_to_vec;
 use std::collections::HashMap;
 
 #[derive(Copy, Clone, PartialEq)]

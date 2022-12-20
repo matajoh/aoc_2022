@@ -1,4 +1,4 @@
-use super::utils::read_to_vec;
+use crate::utils::read_to_vec;
 
 fn to_item(line: &str) -> Option<i32> {
     match line.trim() {

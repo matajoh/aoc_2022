@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::utils::read_to_vec;
+use crate::utils::read_to_vec;
 
 enum Item {
     Directory(String, Vec<String>),

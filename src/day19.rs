@@ -3,7 +3,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use crate::utils::read_to_vec;
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
 enum Robot {
     Ore,
     Clay,
@@ -11,7 +11,7 @@ enum Robot {
     Geode,
 }
 
-#[derive(Debug, Clone, Copy, Eq)]
+#[derive(Clone, Copy, Eq, Hash)]
 struct Materials {
     ore: i32,
     clay: i32,
@@ -41,30 +41,6 @@ fn time_to_produce(quantity: i32, rate: i32) -> i32 {
 }
 
 impl Materials {
-    fn contains(&self, m: &Materials) -> bool {
-        m.ore <= self.ore
-            && m.clay <= self.clay
-            && m.obsidian <= self.obsidian
-            && m.geode <= self.geode
-    }
-
-    fn can_build(&self, blueprint: &Blueprint) -> Vec<Robot> {
-        [Robot::Ore, Robot::Clay, Robot::Obsidian, Robot::Geode]
-            .iter()
-            .filter_map(|r| {
-                if self.contains(&blueprint[r]) {
-                    Some(*r)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn is_zero(&self) -> bool {
-        !(self.ore > 0 || self.clay > 0 || self.obsidian > 0 || self.geode > 0)
-    }
-
     fn subtract(&self, m: &Materials) -> Materials {
         Materials {
             ore: self.ore - m.ore,
@@ -124,10 +100,6 @@ impl Materials {
             geode: 0,
         }
     }
-
-    fn score(&self) -> i32 {
-        self.ore + self.clay * 10 + self.obsidian * 100 + self.geode * 1000
-    }
 }
 
 type Blueprint = HashMap<Robot, Materials>;
@@ -174,21 +146,20 @@ fn to_blueprints(line: &str) -> Blueprint {
     blueprint
 }
 
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Hash)]
 struct State {
     minute: usize,
     materials: Materials,
     robots: Materials,
-    actions: Vec<(usize, Robot)>,
+    potential: i32,
 }
 
 impl Ord for State {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.materials
-            .score()
-            .cmp(&other.materials.score())
-            .then_with(|| self.robots.score().cmp(&other.robots.score()))
+        self.score()
+            .total_cmp(&other.score())
             .then_with(|| other.minute.cmp(&self.minute))
+            .then_with(|| self.potential.cmp(&other.potential))
     }
 }
 
@@ -200,7 +171,7 @@ impl PartialOrd for State {
 
 impl PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
+        self.materials.eq(&other.materials) && self.robots.eq(&other.robots)
     }
 }
 
@@ -212,22 +183,67 @@ impl State {
             minute: 0,
             materials: Materials::none(),
             robots: Materials::none().add_robot(Robot::Ore),
-            actions: vec![],
+            potential: 0,
         }
     }
 
-    fn mine(&self, minutes: usize) -> State {
+    fn score(&self) -> f32 {
+        if self.materials.geode > 0 {
+            (self.materials.geode as f32) / (self.minute as f32)
+        } else {
+            0.0
+        }
+    }
+
+    fn mine(&self, duration: i32) -> State {
+        if duration == 0 {
+            return *self;
+        }
+
         State {
-            minute: self.minute + minutes,
-            materials: self.materials.add(&self.robots.multiply(minutes as i32)),
+            minute: self.minute + duration as usize,
+            materials: self.materials.add(&self.robots.multiply(duration)),
             robots: self.robots,
-            actions: self.actions.clone(),
+            potential: 0,
+        }
+    }
+
+    fn time_to_build(&self, cost: &Materials) -> Materials {
+        let remaining = cost.subtract(&self.materials);
+        remaining.time_to_produce(&self.robots)
+    }
+
+    fn estimate_geodes(&self, blueprint: &Blueprint, minutes: usize) -> State {
+        let obsidian = blueprint[&Robot::Geode].obsidian;
+        let clay = blueprint[&Robot::Obsidian].clay;
+        let mut materials = self.materials;
+        let mut robots = self.robots;
+        for _ in self.minute..minutes {
+            let mut new_robots = Materials::none();
+            if materials.obsidian >= obsidian {
+                new_robots.geode += 1;
+                materials.obsidian -= obsidian;
+            }
+            if materials.clay >= clay && robots.obsidian < obsidian {
+                new_robots.obsidian += 1;
+                materials.clay -= clay;
+            }
+            if robots.clay < clay {
+                new_robots.clay += 1;
+            }
+            materials = materials.add(&robots);
+            robots = robots.add(&new_robots);
+        }
+
+        State {
+            minute: self.minute,
+            materials: self.materials,
+            robots: self.robots,
+            potential: materials.geode,
         }
     }
 
     fn build(&self, blueprint: &Blueprint, robot: Robot) -> State {
-        let mut actions = self.actions.clone();
-        actions.push((self.minute, robot));
         State {
             minute: self.minute + 1,
             materials: self
@@ -235,101 +251,77 @@ impl State {
                 .add(&self.robots)
                 .subtract(&blueprint[&robot]),
             robots: self.robots.add_robot(robot),
-            actions,
+            potential: 0,
         }
     }
-
-    fn replay(&self, blueprint: &Blueprint, minutes: usize) {
-        let mut i = 0;
-        let mut state = State::init();
-        while i < self.actions.len() {
-            println!("== Minute {} ==", state.minute + 1);
-            let build = if state.minute == self.actions[i].0 {
-                let robot = self.actions[i].1;
-                println!("Spend {:?} to build {:?}", blueprint[&robot], robot);
-                i += 1;
-                Some(robot)
-            } else {
-                None
-            };
-            println!("robots: {:?}", state.robots);
-
-            state = match build {
-                Some(robot) => state.build(blueprint, robot),
-                _ => state.mine(1),
-            };
-            println!("mats: {:?}", state.materials);
-            println!();
-        }
-
-        while state.minute < minutes {
-            println!("== Minute {} ==", state.minute + 1);
-            println!("robots: {:?}", state.robots);
-            state = state.mine(1);
-            println!("mats: {:?}", state.materials);
-            println!();
-        }
-    }
-}
-
-fn build(blueprint: &Blueprint, robot: Robot, state: &State, limit: usize) -> Vec<State> {
-    let needed = blueprint[&robot];
-    let mut remaining = needed.subtract(&state.materials);
-    if robot == Robot::Ore {
-        let time = time_to_produce(remaining.ore, state.robots.ore);
-        return vec![state.mine(time as usize).build(blueprint, robot)];
-    }
-
-    let mut results = vec![];
-    let mut plans = vec![state.clone()];
-    while let Some(current) = plans.pop() {
-        if current.minute >= limit {
-            continue;
-        }
-
-        remaining = needed.subtract(&current.materials);
-        let time = remaining.time_to_produce(&current.robots);
-        if time.max() < i32::MAX {
-            let build = current.mine(time.max() as usize).build(blueprint, robot);
-            results.push(build);
-        }
-
-        if time.ore > 0 {
-            plans.extend(build(blueprint, Robot::Ore, &current, limit))
-        }
-
-        if time.clay > 0 {
-            plans.extend(build(blueprint, Robot::Clay, &current, limit))
-        }
-
-        if time.obsidian > 0 {
-            plans.extend(build(blueprint, Robot::Obsidian, &current, limit))
-        }
-    }
-
-    results
 }
 
 fn most_geodes(blueprint: &Blueprint, minutes: usize) -> usize {
+    let mut seen = HashSet::new();
     let mut heap = BinaryHeap::new();
     heap.push(State::init());
     let mut best = State::init();
+    let ore = &blueprint[&Robot::Ore];
+    let clay = &blueprint[&Robot::Clay];
+    let obsidian = &blueprint[&Robot::Obsidian];
+    let geode = &blueprint[&Robot::Geode];
+    let max_ore = ore.ore.max(clay.ore).max(obsidian.ore).max(geode.ore);
+    let max_clay = obsidian.clay;
+    let max_obsidian = geode.obsidian;
     while let Some(current) = heap.pop() {
-        if current.minute > minutes {
+        if current.minute > minutes || current.potential < best.materials.geode {
             continue;
         }
 
-        let end = current.mine(minutes - current.minute);
-        if end > best {
-            best = end
+        if current.materials.geode > best.materials.geode {
+            best = current
         }
 
-        for next in build(blueprint, Robot::Geode, &current, minutes) {
-            heap.push(next)
+        let time = current.time_to_build(geode).max();
+        if time < i32::MAX {
+            let next = current
+                .mine(time)
+                .build(blueprint, Robot::Geode)
+                .estimate_geodes(blueprint, minutes);
+            if seen.insert(next) {
+                heap.push(next);
+            }
+        }
+        if current.robots.ore < max_ore {
+            let time = current.time_to_build(ore).max();
+            let next = current
+                .mine(time)
+                .build(blueprint, Robot::Ore)
+                .estimate_geodes(blueprint, minutes);
+            if seen.insert(next) {
+                heap.push(next)
+            }
+        }
+        if current.robots.clay < max_clay {
+            let time = current.time_to_build(clay).max();
+            let next = current
+                .mine(time)
+                .build(blueprint, Robot::Clay)
+                .estimate_geodes(blueprint, minutes);
+            if seen.insert(next) {
+                heap.push(next);
+            }
+        }
+        if current.robots.obsidian < max_obsidian {
+            let time = current.time_to_build(obsidian).max();
+            if time < i32::MAX {
+                let next = current
+                    .mine(time)
+                    .build(blueprint, Robot::Obsidian)
+                    .estimate_geodes(blueprint, minutes);
+                if seen.insert(next) {
+                    heap.push(next)
+                }
+            }
         }
     }
-    best.replay(blueprint, minutes);
-    println!("{}", best.materials.geode);
+
+    best = best.mine((minutes - best.minute) as i32);
     best.materials.geode as usize
 }
 

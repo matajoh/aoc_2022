@@ -8,7 +8,7 @@ const MAX: usize = 25;
 const MIN: usize = 0;
 const INFINITY: usize = usize::MAX;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 enum Square {
     Start,
     End,

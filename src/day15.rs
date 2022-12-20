@@ -1,4 +1,4 @@
-use super::utils::read_to_vec;
+use crate::utils::read_to_vec;
 use std::cmp::Ordering;
 
 struct Sensor {
@@ -13,7 +13,6 @@ struct Range {
     start: i64,
 }
 
-#[derive(Debug)]
 enum Line {
     Positive(i64),
     Negative(i64),
