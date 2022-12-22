@@ -13,7 +13,7 @@ enum Move {
     Forward(usize),
 }
 
-type Position = (i32, i32);
+type Position = (usize, usize);
 
 struct Tile {
     position: Position,
@@ -30,21 +30,26 @@ fn find_neighbor(
     start: Position,
     lookup: &HashMap<Position, usize>,
     move_next: fn(Position) -> Position,
-    rows: i32,
-    columns: i32,
+    rows: usize,
+    columns: usize,
 ) -> Position {
     let mut cursor = move_next(start);
-    while !lookup.contains_key(&cursor) {
-        cursor = move_next(cursor);
-        if cursor.0 < 0 {
+    loop {
+        if cursor.0 == 0 {
             cursor = (rows, cursor.1)
         } else if cursor.0 == rows {
-            cursor = (0, cursor.1)
-        } else if cursor.1 < 0 {
+            cursor = (1, cursor.1)
+        } else if cursor.1 == 0 {
             cursor = (cursor.0, columns)
         } else if cursor.1 == columns {
-            cursor = (cursor.0, 0)
+            cursor = (cursor.0, 1)
         }
+
+        if lookup.contains_key(&cursor) {
+            break;
+        }
+
+        cursor = move_next(cursor);
     }
     cursor
 }
@@ -55,26 +60,19 @@ fn read_puzzle() -> (Vec<Tile>, Vec<Move>) {
         contents => Some(contents.to_string()),
     });
 
-    let rows = lines.len() as i32 - 1;
-    let columns = lines[..rows as usize]
-        .iter()
-        .map(|line| line.len() as i32)
-        .max()
-        .unwrap();
-
-    let mut tiles = (0..rows)
+    let mut tiles = (0..lines.len() - 1)
         .flat_map(|r| {
-            lines[r as usize]
+            lines[r]
                 .chars()
                 .enumerate()
                 .filter_map(move |(c, t)| match t {
                     '.' => Some(Tile {
-                        position: (r, c as i32),
+                        position: (r + 1, c + 1),
                         is_wall: false,
                         neighbors: [0; 4],
                     }),
                     '#' => Some(Tile {
-                        position: (r, c as i32),
+                        position: (r + 1, c + 1),
                         is_wall: true,
                         neighbors: [0; 4],
                     }),
@@ -83,9 +81,9 @@ fn read_puzzle() -> (Vec<Tile>, Vec<Move>) {
         })
         .collect::<Vec<Tile>>();
 
-    let lookup = (0..tiles.len())
-        .map(|i| (tiles[i].position, i))
-        .collect::<HashMap<(i32, i32), usize>>();
+    let rows = tiles.iter().map(|t| t.position.0).max().unwrap() + 1;
+    let columns = tiles.iter().map(|t| t.position.1).max().unwrap() + 1;
+    let lookup = (0..tiles.len()).map(|i| (tiles[i].position, i)).collect();
 
     for t in tiles.iter_mut() {
         t.neighbors[UP] =
@@ -98,19 +96,26 @@ fn read_puzzle() -> (Vec<Tile>, Vec<Move>) {
             lookup[&find_neighbor(t.position, &lookup, |p| (p.0, p.1 + 1), rows, columns)];
     }
 
-    let moves = lines[rows as usize]
+    let moves = lines[rows - 1]
         .split_inclusive(['R', 'L'])
-        .map(|m| match m {
-            "R" => Move::Right,
-            "L" => Move::Left,
-            steps => Move::Forward(steps.parse().unwrap()),
+        .flat_map(|m| {
+            match (
+                m.chars().take(m.len() - 1).collect::<String>(),
+                m.chars().last().unwrap(),
+            ) {
+                (steps, 'R') => vec![Move::Forward(steps.parse().unwrap()), Move::Right],
+                (steps, 'L') => vec![Move::Forward(steps.parse().unwrap()), Move::Left],
+                _ => {
+                    vec![Move::Forward(m.parse().unwrap())]
+                }
+            }
         })
         .collect();
 
     (tiles, moves)
 }
 
-fn part1(tiles: &Vec<Tile>, moves: &Vec<Move>) -> i32 {
+fn part1(tiles: &Vec<Tile>, moves: &Vec<Move>) -> usize {
     let mut state = State {
         index: 0,
         facing: RIGHT,
@@ -132,7 +137,7 @@ fn part1(tiles: &Vec<Tile>, moves: &Vec<Move>) -> i32 {
     }
 
     let pos = tiles[state.index].position;
-    1000 * pos.0 + 4 * pos.1 + state.facing as i32
+    1000 * pos.0 + 4 * pos.1 + state.facing
 }
 
 pub fn run() {
