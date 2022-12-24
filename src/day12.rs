@@ -83,11 +83,11 @@ impl SearchInfo<Cell, usize> for Map {
         self.end.0 == cell.0 && self.end.1 == cell.1
     }
 
-    fn infinity(&self) -> usize {
+    fn infinity() -> usize {
         usize::MAX
     }
 
-    fn zero(&self) -> usize {
+    fn zero() -> usize {
         0
     }
 }
