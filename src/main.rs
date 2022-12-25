@@ -74,6 +74,7 @@ fn main() {
             },
         }
     } else {
-        DAYS.last().unwrap()()
+        //DAYS.last().unwrap()()
+        day22::run()
     }
 }
