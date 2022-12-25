@@ -29,6 +29,17 @@ impl Add for Vec2 {
     }
 }
 
+impl Add for &Vec2 {
+    type Output = Vec2;
+
+    fn add(self, other: Self) -> Vec2 {
+        Vec2 {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
 impl Mul<i32> for Vec2 {
     type Output = Self;
 

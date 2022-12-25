@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 use std::fs::read_to_string;
 
-use crate::utils::{find_next, is_match};
+use crate::{
+    maths::Vec2,
+    utils::{find_next, is_match},
+};
 
-type Point = (i32, i32);
-type Rock = Vec<Point>;
+type Rock = Vec<Vec2>;
 struct Room {
-    rocks: HashSet<Point>,
+    rocks: HashSet<Vec2>,
     height: i32,
     jet_index: usize,
     rock_index: usize,
@@ -27,27 +29,50 @@ enum Jet {
     Right,
 }
 
-fn add(lhs: &Point, rhs: &Point) -> Point {
-    (lhs.0 + rhs.0, lhs.1 + rhs.1)
-}
-
 fn create_rock(rock_type: RockType, height: i32) -> Rock {
-    let init: Point = (0, height);
+    let init = Vec2::from(0, height);
     match rock_type {
-        RockType::HLine => vec![(2, 3), (3, 3), (4, 3), (5, 3)],
-        RockType::Cross => vec![(3, 3), (2, 4), (3, 4), (4, 4), (3, 5)],
-        RockType::Angle => vec![(2, 3), (3, 3), (4, 3), (4, 4), (4, 5)],
-        RockType::VLine => vec![(2, 3), (2, 4), (2, 5), (2, 6)],
-        RockType::Square => vec![(2, 3), (3, 3), (2, 4), (3, 4)],
+        RockType::HLine => vec![
+            Vec2::from(2, 3),
+            Vec2::from(3, 3),
+            Vec2::from(4, 3),
+            Vec2::from(5, 3),
+        ],
+        RockType::Cross => vec![
+            Vec2::from(3, 3),
+            Vec2::from(2, 4),
+            Vec2::from(3, 4),
+            Vec2::from(4, 4),
+            Vec2::from(3, 5),
+        ],
+        RockType::Angle => vec![
+            Vec2::from(2, 3),
+            Vec2::from(3, 3),
+            Vec2::from(4, 3),
+            Vec2::from(4, 4),
+            Vec2::from(4, 5),
+        ],
+        RockType::VLine => vec![
+            Vec2::from(2, 3),
+            Vec2::from(2, 4),
+            Vec2::from(2, 5),
+            Vec2::from(2, 6),
+        ],
+        RockType::Square => vec![
+            Vec2::from(2, 3),
+            Vec2::from(3, 3),
+            Vec2::from(2, 4),
+            Vec2::from(3, 4),
+        ],
     }
     .iter()
-    .map(|p| add(p, &init))
+    .map(|p| p + &init)
     .collect()
 }
 
-const DOWN: Point = (0, -1);
-const LEFT: Point = (-1, 0);
-const RIGHT: Point = (1, 0);
+const DOWN: Vec2 = Vec2 { x: 0, y: -1 };
+const LEFT: Vec2 = Vec2 { x: -1, y: 0 };
+const RIGHT: Vec2 = Vec2 { x: 1, y: 0 };
 const ROCK_ORDER: [RockType; 5] = [
     RockType::HLine,
     RockType::Cross,
@@ -56,20 +81,20 @@ const ROCK_ORDER: [RockType; 5] = [
     RockType::Square,
 ];
 
-fn move_rock(rock: &mut Rock, dir: &Point) {
+fn move_rock(rock: &mut Rock, dir: Vec2) {
     for p in rock {
-        *p = add(p, dir)
+        *p = *p + dir
     }
 }
 
 impl Room {
-    fn can_move(&self, rock: &Rock, dir: &Point) -> bool {
+    fn can_move(&self, rock: &Rock, dir: &Vec2) -> bool {
         for p in rock {
-            let q = add(p, dir);
+            let q = p + dir;
             if match (q, self.rocks.contains(&q)) {
-                ((-1, _), _) => true,
-                ((7, _), _) => true,
-                ((_, -1), _) => true,
+                (Vec2 { x: -1, y: _ }, _) => true,
+                (Vec2 { x: 7, y: _ }, _) => true,
+                (Vec2 { x: _, y: -1 }, _) => true,
                 (_, true) => true,
                 _ => false,
             } {
@@ -94,7 +119,7 @@ impl Room {
             if !self.rocks.insert(*p) {
                 panic!("collision")
             }
-            self.height = self.height.max(p.1 + 1);
+            self.height = self.height.max(p.y + 1);
         }
     }
 
@@ -112,10 +137,10 @@ impl Room {
                 self.jet_index = 0;
             }
             if self.can_move(&rock, jet) {
-                move_rock(&mut rock, jet)
+                move_rock(&mut rock, *jet)
             }
             if self.can_move(&rock, &DOWN) {
-                move_rock(&mut rock, &DOWN)
+                move_rock(&mut rock, DOWN)
             } else {
                 self.settle(&rock);
                 break;
@@ -130,7 +155,7 @@ impl Room {
                 (0..7)
                     .into_iter()
                     .map(|x| {
-                        if self.rocks.contains(&(x, y)) {
+                        if self.rocks.contains(&Vec2 { x, y }) {
                             1u8 << x
                         } else {
                             0u8
@@ -206,7 +231,7 @@ fn part2() -> i64 {
     let sequence_length = sequence.len();
     let tail_length = (1000000000000i64 - sequence_start as i64) % sequence_length as i64;
     let num_sequences = (1000000000000i64 - sequence_start as i64) / sequence_length as i64;
-    sequence[tail_length as usize - 1] as i64 + pattern_length as i64 * num_sequences
+    sequence[tail_length as usize] as i64 + pattern_length as i64 * num_sequences
 }
 
 pub fn run() {
