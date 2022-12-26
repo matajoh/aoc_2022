@@ -219,20 +219,16 @@ impl State {
         let mut materials = self.materials;
         let mut robots = self.robots;
         for _ in self.minute..minutes {
-            let mut new_robots = Materials::none();
             if materials.obsidian >= obsidian {
-                new_robots.geode += 1;
+                robots.geode += 1;
                 materials.obsidian -= obsidian;
-            }
-            if materials.clay >= clay && robots.obsidian < obsidian {
-                new_robots.obsidian += 1;
+            } else if materials.clay >= clay && robots.obsidian < obsidian {
+                robots.obsidian += 1;
                 materials.clay -= clay;
-            }
-            if robots.clay < clay {
-                new_robots.clay += 1;
+            } else if robots.clay < clay {
+                robots.clay += 1;
             }
             materials = materials.add(&robots);
-            robots = robots.add(&new_robots);
         }
 
         State {

@@ -26,7 +26,7 @@ mod day25;
 mod maths;
 mod utils;
 
-use std::{env, time::Instant};
+use std::env;
 
 static DAYS: [fn(); 25] = [
     day01::run,
@@ -58,9 +58,8 @@ static DAYS: [fn(); 25] = [
 
 fn run_all() {
     for day in DAYS {
-        let start = Instant::now();
         day();
-        println!("Time taken: {:?}", Instant::now() - start)
+        println!()
     }
 }
 

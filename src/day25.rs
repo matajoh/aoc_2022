@@ -60,5 +60,5 @@ fn part1() -> String {
 
 pub fn run() {
     println!("== Day 25 ==");
-    println!("Part 1: {}", part1());
+    println!("{}", part1());
 }
