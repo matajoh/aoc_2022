@@ -52,17 +52,13 @@ pub fn find_next<T: Eq>(
 }
 
 pub trait SearchInfo<T, I> {
-    fn neighbors(&self, node: &T) -> Vec<T>;
-    fn heuristic(&self, node: &T) -> I;
-    fn distance(&self, start: &T, end: &T) -> I;
-    fn start(&self) -> T;
-    fn is_goal(&self, node: &T) -> bool;
-    fn infinity() -> I;
-    fn zero() -> I;
-}
+    type Data: Default;
 
-pub trait SearchInfoMut<T, I> {
-    fn neighbors(&mut self, node: &T) -> Vec<T>;
+    fn init(&self) -> Self::Data {
+        Self::Data::default()
+    }
+    fn update(&self, _: &T, _: &mut Self::Data) {}
+    fn neighbors(&self, node: &T, data: &Self::Data) -> Vec<T>;
     fn heuristic(&self, node: &T) -> I;
     fn distance(&self, start: &T, end: &T) -> I;
     fn start(&self) -> T;
@@ -115,6 +111,7 @@ pub fn astar_search<
 >(
     info: &S,
 ) -> Option<(HashMap<T, T>, T)> {
+    let mut data = info.init();
     let mut open_set = HashSet::new();
     open_set.insert(info.start());
 
@@ -132,56 +129,9 @@ pub fn astar_search<
             return Some((came_from, current));
         }
 
+        info.update(&current, &mut data);
         open_set.remove(&current);
-        for neighbor in info.neighbors(&current) {
-            let tentative_g_score = g_score[&current] + info.distance(&current, &neighbor);
-            let current_g_score = match g_score.get(&neighbor) {
-                Some(g_score) => *g_score,
-                None => S::infinity(),
-            };
-            if tentative_g_score < current_g_score {
-                came_from.insert(neighbor, current);
-                g_score.insert(neighbor, tentative_g_score);
-                f_score.push(Ranking(
-                    neighbor.clone(),
-                    tentative_g_score + info.heuristic(&neighbor),
-                ));
-                if !open_set.contains(&neighbor) {
-                    open_set.insert(neighbor);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-pub fn astar_search_mut<
-    T: Eq + Hash + Copy,
-    I: Debug + Copy + Ord + PartialOrd + Add<Output = I>,
-    S: SearchInfoMut<T, I>,
->(
-    info: &mut S,
-) -> Option<(HashMap<T, T>, T)> {
-    let mut open_set = HashSet::new();
-    open_set.insert(info.start());
-
-    let mut came_from = HashMap::new();
-
-    let mut g_score = HashMap::new();
-    g_score.insert(info.start(), S::zero());
-
-    let mut f_score = BinaryHeap::new();
-    f_score.push(Ranking(info.start(), info.heuristic(&info.start())));
-
-    while !open_set.is_empty() {
-        let current = f_score.pop().unwrap().0;
-        if info.is_goal(&current) {
-            return Some((came_from, current));
-        }
-
-        open_set.remove(&current);
-        for neighbor in info.neighbors(&current) {
+        for neighbor in info.neighbors(&current, &data) {
             let tentative_g_score = g_score[&current] + info.distance(&current, &neighbor);
             let current_g_score = match g_score.get(&neighbor) {
                 Some(g_score) => *g_score,
@@ -215,7 +165,9 @@ struct Graph<N: GraphNode> {
 }
 
 impl<N: GraphNode> SearchInfo<usize, usize> for Graph<N> {
-    fn neighbors(&self, n: &usize) -> Vec<usize> {
+    type Data = usize;
+
+    fn neighbors(&self, n: &usize, _: &usize) -> Vec<usize> {
         self.nodes[*n].neighbors()
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     maths::Vec2,
-    utils::{astar_search_mut, read_to_vec, SearchInfoMut},
+    utils::{astar_search, read_to_vec, SearchInfo},
 };
 
 #[derive(Copy, Clone)]
@@ -44,7 +44,6 @@ struct Map {
     blizzards: Vec<Blizzard>,
     width: i32,
     height: i32,
-    blizzards_memo: Vec<HashSet<Vec2>>,
 }
 
 fn to_tiles(line: &str) -> Vec<char> {
@@ -95,7 +94,6 @@ impl Map {
             blizzards,
             width,
             height,
-            blizzards_memo: vec![],
         }
     }
 
@@ -113,32 +111,37 @@ impl Map {
         }
     }
 
-    fn blizzard_at(&mut self, pos: &Vec2, minute: usize) -> bool {
-        for m in self.blizzards_memo.len()..=minute {
-            self.blizzards_memo.push(
-                self.blizzards
-                    .iter()
-                    .map(|b| b.at(m, self.width, self.height))
-                    .collect(),
-            );
-        }
-
-        self.blizzards_memo[minute].contains(pos)
-    }
-
-    fn is_open(&mut self, state: &State) -> bool {
+    fn is_open(&self, state: &State, open_memo: &Vec<HashSet<Vec2>>) -> bool {
         if self.is_wall(state.pos) {
             false
-        } else if self.blizzard_at(&state.pos, state.minute) {
-            false
         } else {
-            true
+            open_memo[state.minute].contains(&state.pos)
         }
     }
 }
 
-impl SearchInfoMut<State, usize> for Map {
-    fn neighbors(&mut self, node: &State) -> Vec<State> {
+impl SearchInfo<State, usize> for Map {
+    type Data = Vec<HashSet<Vec2>>;
+    fn update(&self, node: &State, open_memo: &mut Self::Data) {
+        for m in open_memo.len()..=node.minute + 1 {
+            let blizzards = self
+                .blizzards
+                .iter()
+                .map(|b| b.at(m, self.width, self.height))
+                .collect::<HashSet<Vec2>>();
+            let open = (0..self.width)
+                .flat_map(|x| {
+                    (0..self.height)
+                        .map(move |y| Vec2::from(x, y))
+                        .filter(|p| !blizzards.contains(p))
+                })
+                .chain([Vec2::from(0, -1), Vec2::from(self.width - 1, self.height)])
+                .collect();
+            open_memo.push(open);
+        }
+    }
+
+    fn neighbors(&self, node: &State, open_memo: &Self::Data) -> Vec<State> {
         [
             node.pos,
             node.pos + Vec2::from(1, 0),
@@ -148,7 +151,7 @@ impl SearchInfoMut<State, usize> for Map {
         ]
         .into_iter()
         .filter_map(|p| match node.next(p) {
-            next if self.is_open(&next) => Some(next),
+            next if self.is_open(&next, open_memo) => Some(next),
             _ => None,
         })
         .collect()
@@ -179,26 +182,24 @@ impl SearchInfoMut<State, usize> for Map {
     }
 }
 
-fn part1() -> usize {
-    let mut map = Map::new();
-    let (_, state) = astar_search_mut(&mut map).unwrap();
+fn part1(map: &mut Map) -> usize {
+    let (_, state) = astar_search(map).unwrap();
+    map.start = state;
     state.minute
 }
 
-fn part2() -> usize {
-    let mut map = Map::new();
-    let (_, state0) = astar_search_mut(&mut map).unwrap();
-    map.start = state0;
+fn part2(map: &mut Map) -> usize {
     map.goal = Vec2::from(0, -1);
-    let (_, state1) = astar_search_mut(&mut map).unwrap();
-    map.start = state1;
+    let (_, mid) = astar_search(map).unwrap();
+    map.start = mid;
     map.goal = Vec2::from(map.width - 1, map.height);
-    let (_, state2) = astar_search_mut(&mut map).unwrap();
-    state2.minute
+    let (_, end) = astar_search(map).unwrap();
+    end.minute
 }
 
 pub fn run() {
     println!("== Day 24 ==");
-    println!("Part 1: {}", part1());
-    println!("Part 2: {}", part2())
+    let mut map = Map::new();
+    println!("Part 1: {}", part1(&mut map));
+    println!("Part 2: {}", part2(&mut map))
 }

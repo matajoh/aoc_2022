@@ -49,7 +49,8 @@ impl Map {
 }
 
 impl SearchInfo<Cell, usize> for Map {
-    fn neighbors(&self, square: &Cell) -> Vec<Cell> {
+    type Data = usize;
+    fn neighbors(&self, square: &Cell, _: &usize) -> Vec<Cell> {
         let r = square.0 as i32;
         let c = square.1 as i32;
         [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)]
